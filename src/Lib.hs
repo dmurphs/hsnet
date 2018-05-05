@@ -4,16 +4,19 @@ module Lib
       randomWeights,
       sigmoid,
       runBatch,
-      tupleToLayer,
+      updateParameters,
+      getLayer,
       ActivationFunction (..),
-      Activation (..)
+      Activation (..),
+      Parameters,
+      Gradients,
+      Layer (..)
     ) where
 
 import Numeric.LinearAlgebra
 
 -- |The Layer type represents a layer in an artificial neural network
-data Layer = Layer { weights            :: Matrix Double
-                   , biases             :: Vector Double
+data Layer = Layer { layerParameters  :: Parameters
                    , activationFunction :: ActivationFunction
                    }
 
@@ -28,10 +31,8 @@ data Activation = Activation { -- | Values after matrix multiplication but befor
                              , postActivation    :: Matrix Double
                              }
 
--- |Turns a tuple of form (weights,biases,activationFunction) into a Layer
-tupleToLayer :: (Matrix Double, Vector Double, ActivationFunction) -> Layer
-tupleToLayer (layerWeights,layerBiases,layerActivationFunction) =
-  Layer { weights=layerWeights, biases=layerBiases, activationFunction = layerActivationFunction }
+type Parameters = (Matrix Double, Vector Double)
+type Gradients = Parameters
 
 -- |Computes values for each layer
 forwardPropogate :: Matrix Double -> [Layer] -> [Activation]
@@ -47,8 +48,7 @@ activate previousActivation layer = Activation {preActivation=layerPreActivation
     layerPostActivation = cmap layerActivationFunction layerPreActivation
     layerPreActivation = (previousPostActivation <> layerWeights) `add` fromRows (replicate (rows previousPostActivation) layerBiases)
     previousPostActivation = postActivation previousActivation
-    layerWeights = weights layer
-    layerBiases = biases layer
+    (layerWeights,layerBiases) = layerParameters layer 
     layerActivationFunction = (f . activationFunction) layer
 
 -- |Get random weights for a given network structure
@@ -74,27 +74,28 @@ sigmoid = ActivationFunction {f=s,f'=s'}
     s' x = s x * (1 - s x)
 
 -- |Run a batch for training neural network model
-runBatch :: Matrix Double -> Matrix Double -> [Layer] -> [(Matrix Double, Vector Double)]
-runBatch inputs expected initialParameters = runBatch' (tail reversedActivations) reversedInititalWeights (tail activationDerivatives) outputDelta [(outputWeightGradients, outputBiasGradients)]
+runBatch :: Matrix Double -> Matrix Double -> [Layer] -> [Gradients]
+runBatch inputs expected initialParameters = runBatch' (outputPreviousActivations:remainingActivations) (reverse initialWeights) (tail activationDerivatives) outputDelta [(outputWeightGradients, outputBiasGradients)]
   where
-    runBatch' (currentActivations:previousActivations:remaining) (nextWeights:currentWeights) (currentActivationDerivative:remainingActivationDerivatives) nextDelta gradients = runBatch' (previousActivations:remaining) currentWeights remainingActivationDerivatives currentDelta (gradient:gradients)
-      where
-        gradient = (getWeightGradients batchSize currentDelta previousActivations, getBiasGradient currentDelta)
-        currentDelta = getDelta currentActivations nextDelta nextWeights currentActivationDerivative
-    runBatch' [input] _ _ _ gradients = gradients
     outputBiasGradients = getBiasGradient outputDelta
-    outputWeightGradients = getWeightGradients batchSize outputDelta outputPreviousActivations
+    outputWeightGradients = getWeightGradients outputDelta outputPreviousActivations
     outputDelta = getOutputDelta expected output outputActivationDerivative 
-    output = head reversedActivations
-    outputPreviousActivations = reversedActivations !! 1
+    (output:outputPreviousActivations:remainingActivations) = reverse activations
     outputActivationDerivative = last activationDerivatives
-    reversedActivations = reverse activations
     activations = forwardPropogate inputs initialParameters
-    reversedInititalWeights = reverse initialWeights
-    initialWeights = map weights initialParameters
-    initialBiases = map biases initialParameters
+    initialWeights = map (fst . layerParameters) initialParameters
+    initialBiases = map (snd . layerParameters) initialParameters
     activationDerivatives = map (f' . activationFunction) initialParameters
-    batchSize = rows inputs
+
+runBatch' :: [Activation] -> [Matrix Double] -> [Double -> Double] -> Matrix Double -> [Gradients] -> [Gradients]
+runBatch' [input] _ _ _ gradients = gradients
+runBatch' activations weights activationDerivatives nextDelta gradients = runBatch' (previousActivations:remaining) currentWeights remainingActivationDerivatives currentDelta (gradient:gradients)
+  where
+    gradient = (getWeightGradients currentDelta previousActivations, getBiasGradient currentDelta)
+    currentDelta = getDelta currentActivations nextDelta nextWeights currentActivationDerivative
+    (currentActivations:previousActivations:remaining) = activations
+    (nextWeights:currentWeights) = weights
+    (currentActivationDerivative:remainingActivationDerivatives) = activationDerivatives
 
 getDelta :: Activation -> Matrix Double -> Matrix Double -> (Double -> Double) -> Matrix Double
 getDelta activation nextDelta nextWeights activationDerivative = (nextDelta <> tr nextWeights) * cmap activationDerivative (preActivation activation)
@@ -105,11 +106,44 @@ getBiasGradient deltaMatrix = fromList $ map (\column -> sum column / fromIntegr
     columns = map toList $ toColumns deltaMatrix
 
 getOutputDelta :: Matrix Double -> Activation -> (Double -> Double) -> Matrix Double
-getOutputDelta expected output activationDerivative = (expected - postActivation output) * cmap activationDerivative (preActivation output)
+getOutputDelta expected output activationDerivative = (postActivation output - expected) * cmap activationDerivative (preActivation output)
 
-getWeightGradients :: Int -> Matrix Double -> Activation -> Matrix Double
-getWeightGradients batchSize delta previousActivations = (tr previousPostActivation <> delta) / fromIntegral batchSize
+getWeightGradients ::  Matrix Double -> Activation -> Matrix Double
+getWeightGradients delta previousActivations = tr previousPostActivation <> delta
   where
     previousPostActivation = postActivation previousActivations
 
+-- updateAdjustments :: [Parameter] -> [Parameter] -> Double -> Double -> [Parameter]
+-- updateAdjustments adjustments gradients learningRate momentum = zipWith updateWeightAdjustments adjustments gradients
+--   where
+--     updateWeightAdjustments :: Parameter -> Parameter -> Parameter
+--     updateWeightAdjustments (weightAdjustment,biasAdjustment) (weightGradient,biasGradient) =
+--       (
+--         cmap (*momentum) weightAdjustment + cmap (*learningRate) weightGradient,
+--         cmap (*momentum) biasAdjustment + cmap (*learningRate) biasGradient
+--       )
 
+updateParameters :: Double -> [Gradients] -> [Parameters] -> [Parameters]
+updateParameters learningRate = zipWith updateParameters
+  where
+    updateParameters :: Gradients -> Parameters -> Parameters
+    updateParameters (weightGradients,biasGradients) (weights,biases) =
+      (
+        weights - cmap (*learningRate) weightGradients,
+        biases - cmap (*learningRate) biases
+      )
+
+-- runEpochs :: Int -> Double -> Matrix Double -> Matrix Double -> [Layer] -> [Parameters]
+-- runEpochs numEpochs learningRate inputs expected = runEpochs' numEpochs
+--   where
+--     runEpochs' 0 layers = map layerParameters layers
+--     runEpochs' remainingEpochs layers = runEpochs' (remainingEpochs - 1) updatedLayers
+--       where
+--         gradientMatrices = runBatch inputs expected layers
+--         parameters = map layerParameters layers
+--         functions = map activationFunction layers
+--         updatedLayers = zipWith getLayer updatedParameters functions
+--         updatedParameters = updateParameters learningRate gradientMatrices parameters
+
+getLayer :: Parameters -> ActivationFunction -> Layer
+getLayer parameters activationFunction = Layer{layerParameters=parameters, activationFunction=activationFunction}
