@@ -42,22 +42,12 @@ main = hspec $ do
         expectedGradients = [((1><1) [ -1.4970312464482186e-3 ], fromList [-1.4970312464482186e-3]),((1><1) [ -6.303013286946654e-2 ], fromList [-0.12006215555353811])]
         actualGradients = runBatch input expected layers
       actualGradients `shouldBe` expectedGradients
-  -- describe "Lib.updateAdjustments" $ do
-  --   it "correctly adjusts" $ do
-  --     let
-  --       adjustments = [((2><2) [1,2,2,4], fromList [1,1])] :: [Parameter]
-  --       gradients = [((2><2) [0.1,0.1,0.1,0.1], fromList [0.1,0.1])] :: [Parameter]
-  --       learningRate = 0.2
-  --       momentum = 0.7
-  --       expectedUpdatedAdjustments = [((2><2) [0.72, 1.42, 1.42, 2.82], fromList [0.72,0.72])] :: [Parameter]
-  --       actualUpdatedAdjustments = updateAdjustments adjustments gradients learningRate momentum
-  --     actualUpdatedAdjustments `shouldBe` expectedUpdatedAdjustments
     describe "Lib.updateParameters" $ do
       it "correctly updates parameters" $ do
         let
           learningRate = 0.1
           parameters = [((1><2) [1,2], fromList [1,1])] :: [Parameters]
           gradients = [((1><2) [1,1], fromList [1,1])] :: [Gradients]
-          expectedUpdatedParameters = [((1><2) [0.9, 1.9], fromList [0.9,0.9])] :: [Parameters]
-          actualUpdatedParameters = updateParameters learningRate gradients parameters
+          expectedUpdatedParameters = [((1><2) [0.899, 1.899], fromList [0.899,0.899])] :: [Parameters]
+          actualUpdatedParameters = updateParameters 0.01 learningRate gradients parameters
         actualUpdatedParameters `shouldBe` expectedUpdatedParameters

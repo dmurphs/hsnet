@@ -6,6 +6,7 @@ module Lib
       runBatch,
       updateParameters,
       getLayer,
+      runEpochs,
       ActivationFunction (..),
       Activation (..),
       Parameters,
@@ -123,27 +124,36 @@ getWeightGradients delta previousActivations = tr previousPostActivation <> delt
 --         cmap (*momentum) biasAdjustment + cmap (*learningRate) biasGradient
 --       )
 
-updateParameters :: Double -> [Gradients] -> [Parameters] -> [Parameters]
-updateParameters learningRate = zipWith updateParameters
+updateParameters :: Double -> Double -> [Gradients] -> [Parameters] -> [Parameters]
+updateParameters regularizationTerm learningRate = zipWith updateParameters
   where
     updateParameters :: Gradients -> Parameters -> Parameters
-    updateParameters (weightGradients,biasGradients) (weights,biases) =
+    updateParameters gradients (weights,biases) =
       (
-        weights - cmap (*learningRate) weightGradients,
-        biases - cmap (*learningRate) biases
+        weights - cmap (*learningRate) regularizedWeightGradients,
+        biases - cmap (*learningRate) regularizedBiasGradients
       )
+      where
+        (regularizedWeightGradients,regularizedBiasGradients) = applyRegularization regularizationTerm gradients
 
--- runEpochs :: Int -> Double -> Matrix Double -> Matrix Double -> [Layer] -> [Parameters]
--- runEpochs numEpochs learningRate inputs expected = runEpochs' numEpochs
---   where
---     runEpochs' 0 layers = map layerParameters layers
---     runEpochs' remainingEpochs layers = runEpochs' (remainingEpochs - 1) updatedLayers
---       where
---         gradientMatrices = runBatch inputs expected layers
---         parameters = map layerParameters layers
---         functions = map activationFunction layers
---         updatedLayers = zipWith getLayer updatedParameters functions
---         updatedParameters = updateParameters learningRate gradientMatrices parameters
+applyRegularization :: Double -> Gradients -> Gradients
+applyRegularization regularizationTerm (weightGradients,biasGradients) =
+  (
+    weightGradients + cmap (*regularizationTerm) weightGradients,
+    biasGradients + cmap (*regularizationTerm) biasGradients
+  )
+
+runEpochs :: Int -> Double -> Double -> Matrix Double -> Matrix Double -> [Layer] -> [Parameters]
+runEpochs numEpochs regularizationTerm learningRate inputs expected = runEpochs' numEpochs
+  where
+    runEpochs' 0 layers = map layerParameters layers
+    runEpochs' remainingEpochs layers = runEpochs' (remainingEpochs - 1) updatedLayers
+      where
+        gradientMatrices = runBatch inputs expected layers
+        parameters = map layerParameters layers
+        functions = map activationFunction layers
+        updatedLayers = zipWith getLayer updatedParameters functions
+        updatedParameters = updateParameters regularizationTerm learningRate gradientMatrices parameters
 
 getLayer :: Parameters -> ActivationFunction -> Layer
 getLayer parameters activationFunction = Layer{layerParameters=parameters, activationFunction=activationFunction}
