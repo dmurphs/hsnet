@@ -62,11 +62,20 @@ main = do
         Right (_,vTest) -> do
           let
             irisTestList = concatMap irisToInput $ V.toList vTest
-            expectedOutputList = concatMap encodeClassName $ V.toList vTest
+            targetOutputList = concatMap encodeClassName $ V.toList vTest
             irisTestInputMatrix = (25><4) irisTestList
-            irisTestExpectedOutputMatrix = (25><3) expectedOutputList
+            irisTestTargetOutputMatrix = (25><3) targetOutputList
             testActivations = forwardPropogate irisTestInputMatrix updatedLayers
             outputs = (postActivation . last) testActivations :: Matrix Double
+            targetOutputRows = toRows irisTestTargetOutputMatrix
+            outputRows = toRows outputs
+            targetArgmaxList = map maxIndex targetOutputRows
+            outputArgmaxList = map maxIndex outputRows
+            zippedArgmaxLists = zip targetArgmaxList outputArgmaxList
+            total = length zippedArgmaxLists
+            correct = length $ [(a,b) | (a,b) <- zippedArgmaxLists,a == b]
+          print total
+          print correct
           print outputs
-          print irisTestExpectedOutputMatrix
+          print irisTestTargetOutputMatrix
 

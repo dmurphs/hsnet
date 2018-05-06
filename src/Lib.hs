@@ -128,20 +128,14 @@ updateParameters :: Double -> Double -> [Gradients] -> [Parameters] -> [Paramete
 updateParameters regularizationTerm learningRate = zipWith updateParameters
   where
     updateParameters :: Gradients -> Parameters -> Parameters
-    updateParameters gradients (weights,biases) =
+    updateParameters (weightGradients,biasGradients) (weights,biases) =
       (
-        weights - cmap (*learningRate) regularizedWeightGradients,
-        biases - cmap (*learningRate) regularizedBiasGradients
+        weights - cmap (*learningRate) (applyRegularization regularizationTerm weightGradients),
+        biases - cmap (*learningRate) biasGradients
       )
-      where
-        (regularizedWeightGradients,regularizedBiasGradients) = applyRegularization regularizationTerm gradients
 
-applyRegularization :: Double -> Gradients -> Gradients
-applyRegularization regularizationTerm (weightGradients,biasGradients) =
-  (
-    weightGradients + cmap (*regularizationTerm) weightGradients,
-    biasGradients + cmap (*regularizationTerm) biasGradients
-  )
+applyRegularization :: Double -> Matrix Double -> Matrix Double
+applyRegularization regularizationTerm weightGradients = weightGradients + cmap (*regularizationTerm) weightGradients
 
 runEpochs :: Int -> Double -> Double -> Matrix Double -> Matrix Double -> [Layer] -> [Parameters]
 runEpochs numEpochs regularizationTerm learningRate inputs expected = runEpochs' numEpochs
