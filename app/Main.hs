@@ -9,6 +9,8 @@ import qualified Data.Vector as V
 
 import Lib
 
+-- Use Iris dataset to test functionality
+
 data Iris = Iris
   { sepalLength :: !Double,
     sepalWidth  :: !Double,
@@ -33,10 +35,20 @@ instance FromNamedRecord Iris where
 irisToInput :: Iris -> [Double]
 irisToInput iris = map ($ iris) [sepalLength,sepalWidth,petalLength,petalWidth]
 
-regularizationTerm = 0.01
-learningRate = 0.02
-weightInitializer = 0.0005
-layerSizes = [4,5,3]
+-- Hyperparameters
+regularizationTerm=0.01
+learningRate=0.02
+layerSizes=[4,5,3]
+
+-- Define Model
+initializerScale=0.0005
+initialBiases = biasesWithInitializer initializerScale layerSizes
+initialWeights = weightsWithInitializer initializerScale layerSizes
+initialParameters = zip initialWeights initialBiases
+activationFunctions = [sigmoid,sigmoid]
+layers = zipWith getLayer initialParameters activationFunctions
+
+-- TODO: Write function to get validation set performance
 
 main = do
   irisTrainingData <- BL.readFile "data/training.csv"
@@ -44,27 +56,21 @@ main = do
     Left err -> putStrLn err
     Right (_,vTraining) -> do
       let
-        irisTrainingList = concatMap irisToInput $ V.toList vTraining
-        expectedOutputList = concatMap encodeClassName $ V.toList vTraining
-        irisTrainingInputMatrix = (125><4) irisTrainingList
-        irisTrainingExpectedOutputMatrix = (125><3) expectedOutputList
-        initialWeights = weightsWithInitializer weightInitializer layerSizes
-        -- TODO: add function to initialize biases
-        initialBiases = [Numeric.LinearAlgebra.fromList $ replicate 5 0.0005, Numeric.LinearAlgebra.fromList $ replicate 3 0.0005] :: [Vector Double]
-        initialParameters = zip initialWeights initialBiases
-        activationFunctions = [sigmoid,sigmoid]
-        layers = zipWith getLayer initialParameters activationFunctions
-        updatedParameters = runEpochs 5000 regularizationTerm learningRate irisTrainingInputMatrix irisTrainingExpectedOutputMatrix layers
+        irisTrainingList = map irisToInput $ V.toList vTraining
+        targetOutputList = map encodeClassName $ V.toList vTraining
+        irisTrainingInputMatrix = fromLists irisTrainingList
+        irisTrainingTargetOutputMatrix = fromLists targetOutputList
+        updatedParameters = runEpochs 3000 learningRate initializerScale irisTrainingInputMatrix irisTrainingTargetOutputMatrix layers
         updatedLayers = zipWith getLayer updatedParameters activationFunctions
       irisTestData <- BL.readFile "data/test.csv"
       case decodeByName irisTestData of
         Left err -> putStrLn err
         Right (_,vTest) -> do
           let
-            irisTestList = concatMap irisToInput $ V.toList vTest
-            targetOutputList = concatMap encodeClassName $ V.toList vTest
-            irisTestInputMatrix = (25><4) irisTestList
-            irisTestTargetOutputMatrix = (25><3) targetOutputList
+            irisTestList = map irisToInput $ V.toList vTest
+            targetOutputList = map encodeClassName $ V.toList vTest
+            irisTestInputMatrix = fromLists irisTestList
+            irisTestTargetOutputMatrix = fromLists targetOutputList
             testActivations = forwardPropogate irisTestInputMatrix updatedLayers
             outputs = (postActivation . last) testActivations :: Matrix Double
             targetOutputRows = toRows irisTestTargetOutputMatrix
@@ -73,7 +79,7 @@ main = do
             outputArgmaxList = map maxIndex outputRows
             zippedArgmaxLists = zip targetArgmaxList outputArgmaxList
             total = length zippedArgmaxLists
-            correct = length $ [(a,b) | (a,b) <- zippedArgmaxLists,a == b]
+            correct = length [(a,b) | (a,b) <- zippedArgmaxLists,a == b]
           print total
           print correct
           print outputs

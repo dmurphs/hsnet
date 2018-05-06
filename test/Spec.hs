@@ -46,8 +46,9 @@ main = hspec $ do
       it "correctly updates parameters" $ do
         let
           learningRate = 0.1
+          regularizationTerm = 0.01
           parameters = [((1><2) [1,2], fromList [1,1])] :: [Parameters]
           gradients = [((1><2) [1,1], fromList [1,1])] :: [Gradients]
           expectedUpdatedParameters = [((1><2) [0.899, 1.899], fromList [0.9,0.9])] :: [Parameters]
-          actualUpdatedParameters = updateParameters 0.01 learningRate gradients parameters
+          actualUpdatedParameters = updateParameters learningRate regularizationTerm gradients parameters
         actualUpdatedParameters `shouldBe` expectedUpdatedParameters
